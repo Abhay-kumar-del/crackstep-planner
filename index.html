@@ -209,11 +209,11 @@ function renderPlan(){
   content.append(heading,task,why);top.append(cb,content);row.appendChild(top);host.appendChild(row);
 
  });
- if(exam){const d=(new Date(exam+"T00:00:00")-new Date(new Date().toDateString()))/86400000;if(d>=0&&d<=14){const n=document.createElement("p");n.className="quote";n.textContent=tr("examNear");host.prepend(n)}}
+
  updateProgress();
 }
 function updateProgress(){
- const done=currentPlan.filter(b=>b.checked).length;
+ const done=currentPlan.filter(b=>b.checked===true).length;
  const p=currentPlan.length?Math.round(done/currentPlan.length*100):0;
  $("percent").textContent=p+"%";
  $("fill").style.width=p+"%";
@@ -232,13 +232,25 @@ async function sharePlan(){
  downloadPlan();$("message").textContent=tr("shareFallback");
 }
 function downloadPlan(){const blob=new Blob([planText()],{type:"text/plain;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="CrackStep-study-plan.txt";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-function saveState(){try{localStorage.setItem("crackstepPlannerV2",JSON.stringify({hours:$("hours").value,level:$("level").value,language:$("language").value,subjects:getSelected(),plan:currentPlan}))}catch(e){}}
-function restore(){try{const s=JSON.parse(localStorage.getItem("crackstepPlannerV2")||"null");if(!s)return;$("hours").value=s.hours||4;$("level").value=s.level||"balanced";$("language").value=s.language||"en";document.querySelectorAll('input[name="subject"]').forEach(x=>x.checked=(s.subjects||["math","reasoning","english","gk"]).includes(x.value));if(Array.isArray(s.plan)&&s.plan.length)currentPlan=s.plan}catch(e){}}
+function saveState(){
+ try{localStorage.setItem("crackstepPlannerV2",JSON.stringify({hours:$("hours").value,level:$("level").value,language:$("language").value,subjects:getSelected(),plan:currentPlan.map(b=>({...b,checked:!!b.checked}))}));}
+ catch(e){$("message").textContent="Could not save planner data in this browser."}
+}
+function restore(){
+ try{
+  const s=JSON.parse(localStorage.getItem("crackstepPlannerV2")||"null");if(!s)return;
+  $("hours").value=s.hours||4;$("level").value=s.level||"balanced";$("language").value=s.language||"en";
+  document.querySelectorAll('input[name="subject"]').forEach(x=>x.checked=(s.subjects||["math","reasoning","english","gk"]).includes(x.value));
+  if(Array.isArray(s.plan)&&s.plan.length)currentPlan=s.plan.map((b,i)=>({...b,id:b.id||"b"+i,checked:b.checked===true}));
+ }catch(e){}
+}
 
 const subjectNames={math:{en:"Maths / Quant",hi:"गणित / क्वांट"},reasoning:{en:"Reasoning",hi:"रीज़निंग"},english:{en:"English",hi:"अंग्रेज़ी"},gk:{en:"GK / GS",hi:"GK / GS"},revision:{en:"Revision / error log",hi:"रिविज़न / गलतियों की सूची"},mock:{en:"Timed sectional / mock",hi:"टाइम्ड सेक्शनल / मॉक"}};
 let timerStartAt=null,timerSubject=null,timerInterval=null;
+function saveRunningTimer(){try{if(timerStartAt!==null&&timerSubject)localStorage.setItem("crackstepRunningTimer",JSON.stringify({start:timerStartAt,subject:timerSubject}));else localStorage.removeItem("crackstepRunningTimer")}catch(e){}}
+function restoreRunningTimer(){try{const r=JSON.parse(localStorage.getItem("crackstepRunningTimer")||"null");if(r&&Number.isFinite(r.start)&&subjectNames[r.subject]){timerStartAt=r.start;timerSubject=r.subject;timerInterval=setInterval(updateTimerStatus,1000);updateTimerStatus()}}catch(e){}}
 function readSessions(){try{return JSON.parse(localStorage.getItem("crackstepStudySessions")||"[]")}catch(e){return []}}
-function writeSessions(s){try{localStorage.setItem("crackstepStudySessions",JSON.stringify(s))}catch(e){}}
+function writeSessions(s){try{localStorage.setItem("crackstepStudySessions",JSON.stringify(s));return true}catch(e){$("message").textContent="Could not save weekly study data in this browser.";return false}}
 function fmtMinutes(m){const h=Math.floor(m/60),mm=m%60;return h?h+"h "+mm+"m":mm+"m"}
 function weekKey(d){const x=new Date(d);x.setHours(0,0,0,0);return x.toISOString().slice(0,10)}
 function renderWeekly(){
@@ -258,8 +270,8 @@ function updateTimerStatus(){
  const elapsed=Math.floor((Date.now()-timerStartAt)/1000),m=Math.floor(elapsed/60),s=elapsed%60;
  $("timerStatus").textContent=tr("running")+" · "+(subjectNames[timerSubject][$("language").value]||subjectNames[timerSubject].en)+" · "+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
 }
-$("timerStart").addEventListener("click",()=>{if(timerStartAt!==null)return;timerSubject=$("trackSubject").value;timerStartAt=Date.now();timerInterval=setInterval(updateTimerStatus,1000);updateTimerStatus()});
-$("timerStop").addEventListener("click",()=>{if(timerStartAt===null)return;const end=Date.now(),seconds=Math.max(1,Math.round((end-timerStartAt)/1000));const sessions=readSessions();sessions.push({subject:timerSubject,start:new Date(timerStartAt).toISOString(),end:new Date(end).toISOString(),seconds});writeSessions(sessions);timerStartAt=null;timerSubject=null;clearInterval(timerInterval);timerInterval=null;updateTimerStatus();renderWeekly();saveState()});
+$("timerStart").addEventListener("click",()=>{if(timerStartAt!==null)return;timerSubject=$("trackSubject").value;timerStartAt=Date.now();saveRunningTimer();timerInterval=setInterval(updateTimerStatus,1000);updateTimerStatus()});
+$("timerStop").addEventListener("click",()=>{if(timerStartAt===null)return;const end=Date.now(),seconds=Math.max(1,Math.round((end-timerStartAt)/1000));const sessions=readSessions();sessions.push({subject:timerSubject,start:new Date(timerStartAt).toISOString(),end:new Date(end).toISOString(),seconds});writeSessions(sessions);timerStartAt=null;timerSubject=null;clearInterval(timerInterval);timerInterval=null;saveRunningTimer();updateTimerStatus();renderWeekly();saveState()});
 $("clearWeekly").addEventListener("click",()=>{if(confirm($("language").value==="hi"?"क्या आप पिछले 7 दिनों की पढ़ाई की हिस्ट्री मिटाना चाहते हैं?":"Clear all recorded study sessions?")){localStorage.removeItem("crackstepStudySessions");renderWeekly()}});
 
 $("generate").addEventListener("click",makePlan);
@@ -268,7 +280,7 @@ $("share").addEventListener("click",sharePlan);$("download").addEventListener("c
 $("language").addEventListener("change",()=>{applyLanguage();renderWeekly();saveState()});
 ["hours","level"].forEach(id=>$(id).addEventListener("change",saveState));
 document.querySelectorAll('input[name="subject"]').forEach(x=>x.addEventListener("change",saveState));
-restore();applyLanguage();renderWeekly();if(!currentPlan.length)makePlan();else{renderPlan();updateProgress()}
+restore();applyLanguage();renderWeekly();restoreRunningTimer();if(!currentPlan.length)makePlan();else{renderPlan();updateProgress()}
 </script>
 </body>
 </html>
